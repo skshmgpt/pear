@@ -78,7 +78,7 @@ defmodule Pear.Reader do
 
     cond do
       to == self_name ->
-        hops = visited |> Enum.reverse() |> Enum.join(" → ")
+        hops = full_hop_chain(visited, self_name)
         IO.puts("[#{from}] #{body} (via #{hops})")
 
       true ->
@@ -88,6 +88,12 @@ defmodule Pear.Reader do
            received_from}
         )
     end
+  end
+
+  def full_hop_chain(visited, self_name) do
+    [self_name | visited]
+    |> Enum.reverse()
+    |> Enum.join(" → ")
   end
 end
 
@@ -170,6 +176,7 @@ defmodule Pear.Router do
       {:forward, msg, received_from} ->
         # called from reader, with the deserialized msg
         self_name = :persistent_term.get(:self_name)
+        forwarded_msg = %{msg | visited: [self_name | msg.visited]}
 
         case Map.get(peers, msg.to) do
           nil ->
@@ -181,14 +188,14 @@ defmodule Pear.Router do
               else
                 :gen_tcp.send(
                   socket,
-                  Utils.serialize(%{msg | visited: [self_name | msg.visited]})
+                  Utils.serialize(forwarded_msg)
                 )
               end
             end)
 
           socket ->
             # direct peer
-            :gen_tcp.send(socket, Utils.serialize(msg))
+            :gen_tcp.send(socket, Utils.serialize(forwarded_msg))
         end
 
         loop(peers)
